@@ -5,7 +5,8 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-
+#include <thread>
+#include <fstream>
 HttpServer::HttpServer(int port) : port_(port), server_socket_(-1) {}
 
 HttpServer::~HttpServer()
@@ -70,29 +71,48 @@ void HttpServer::handle_request(int client_socket)
 
     std::string request(buffer, received);
     std::string method, path;
-    parse_request(request, method, path);
+    parse_request(request, method, path);  // 解析方法和路径,没有提取 HTTP 版本
+
+    std::map<std::string, std::string> headers; // 存储请求头
+    parse_headers(request, headers); // 解析请求头
+
+    // 打印请求头信息（调试用）
+    for (const auto& header : headers) {
+        std::cout << header.first << ": " << header.second << std::endl;
+    }
 
     if (method == "GET")
     {
         std::string body;
         if (path == "/")
         {
-            body = "<html><body><h1>there is my page!</h1></body></html>";
+            body = "<html><body><h1>Welcome!</h1></body></html>";
             send_request(client_socket, body, "text/html");
         }
-        else
-        {
-            body = "<html><body><h1>404 Not Found</h1></body></html>";
-            send_request(client_socket, body, "text/html");
+        else {
+            std::ifstream file("." + path, std::ios::binary);
+            if (file.is_open())
+            {
+                std::ostringstream oss;
+                oss << file.rdbuf();
+                body = oss.str();
+                send_request(client_socket, body, "text/html");
+            }
+            else
+            {
+                body = "<html><body><h1>404 Not Found</h1></body></html>";
+                send_request(client_socket, body, "text/html");
+            }
         }
     }
 
     close(client_socket);
 }
 
+
 void HttpServer::send_request(int client_socket, const std::string& body, const std::string& content_type)
 {
-    std::ostringstream response;
+    std::ostringstream response; //shuhcudaoneicun
     response << "HTTP/1.1 200 OK\r\n";
     response << "Content-Type: " << content_type << "\r\n";
     response << "Content-Length: " << body.length() << "\r\n";
@@ -105,8 +125,39 @@ void HttpServer::send_request(int client_socket, const std::string& body, const 
 void HttpServer::parse_request(const std::string& request, std::string& method, std::string& path)
 {
     std::istringstream request_stream(request);
-    request_stream >> method >> path;
+    request_stream >> method >> path;  // 解析 HTTP 方法和路径
 }
+
+void HttpServer::parse_headers(const std::string& request, std::map<std::string, std::string>& headers)
+{
+    std::istringstream request_stream(request);
+    std::string line;
+
+    // 跳过请求的第一行（方法和路径）
+    std::getline(request_stream, line); 
+
+    // 解析剩余的请求头部
+    while (std::getline(request_stream, line) && !line.empty()) {
+        size_t pos = line.find(":"); // 使用冒号分隔键值对
+        if (pos != std::string::npos) {
+            std::string key = line.substr(0, pos);
+            std::string value = line.substr(pos + 1);
+            key = trim(key);  // 去除 key 两端的空白字符
+            value = trim(value);  // 去除 value 两端的空白字符
+            headers[key] = value;
+        }
+    }
+}
+
+// 去除字符串首尾的空白字符
+std::string HttpServer::trim(const std::string& str)
+{
+    size_t first = str.find_first_not_of(" \t\r\n");
+    size_t last = str.find_last_not_of(" \t\r\n");
+    return (first == std::string::npos || last == std::string::npos) ? "" : str.substr(first, last - first + 1);
+}
+
+
 
 void HttpServer::start()
 {
@@ -120,6 +171,9 @@ void HttpServer::start()
             std::cerr << "accept failed" << std::endl;
             continue;
         }
-        handle_request(client_socket);
+
+        std::thread(&HttpServer::handle_request,this,client_socket).detach();//shiyongdulixiancheng;
+
     }
+    
 }
