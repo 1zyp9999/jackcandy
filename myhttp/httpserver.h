@@ -3,10 +3,11 @@
 
 #include <string>
 #include <map>
+#include "thread.h"
 
 class HttpServer {
 public:
-    HttpServer(int port);
+    HttpServer(int port,size_t num_threads);
     ~HttpServer();
 
     void start();
@@ -14,6 +15,7 @@ public:
 private:
     int port_;
     int server_socket_;
+    ThreadPool thread_pool_;
 
     void init_Server();
     void handle_request(int client_socket);

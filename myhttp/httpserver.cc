@@ -7,7 +7,9 @@
 #include <netinet/in.h>
 #include <thread>
 #include <fstream>
-HttpServer::HttpServer(int port) : port_(port), server_socket_(-1) {}
+#include <vector>
+#include <string>
+HttpServer::HttpServer(int port,size_t nums_threads) : port_(port), server_socket_(-1),thread_pool_(nums_threads) {}
 
 HttpServer::~HttpServer()
 {
@@ -86,7 +88,7 @@ void HttpServer::handle_request(int client_socket)
         std::string body;
         if (path == "/")
         {
-            body = "<html><body><h1>Welcome!</h1></body></html>";
+            body = "<html><body><h1>zhangyupeng</h1></body></html>";
             send_request(client_socket, body, "text/html");
         }
         else {
@@ -104,6 +106,29 @@ void HttpServer::handle_request(int client_socket)
                 send_request(client_socket, body, "text/html");
             }
         }
+    }
+    if (method == "POST") {
+        // 找到请求体开始位置
+        size_t body_start = request.find("\r\n\r\n") + 4;
+        std::string post_body = request.substr(body_start);
+
+        // 简单处理application/x-www-form-urlencoded
+        std::vector<std::string> key_value_pairs;
+        size_t pos = 0;
+        while ((pos = post_body.find('&'))!= std::string::npos) {
+            key_value_pairs.push_back(post_body.substr(0, pos));
+            post_body.erase(0, pos + 1);
+        }
+        key_value_pairs.push_back(post_body);
+
+        std::string response_body = "<html><body><h1>POST Data Received</h1><ul>";
+        for (const auto& pair : key_value_pairs) {
+            response_body += "<li>" + pair + "</li>";
+        }
+        response_body += "</ul></body></html>";
+        std::cout << "this is post" << std::endl;
+
+        send_request(client_socket, response_body, "text/html");
     }
 
     close(client_socket);
@@ -145,6 +170,8 @@ void HttpServer::parse_headers(const std::string& request, std::map<std::string,
             key = trim(key);  // 去除 key 两端的空白字符
             value = trim(value);  // 去除 value 两端的空白字符
             headers[key] = value;
+            std::cout << "key: " << key << "value:" << value << std::endl;
+
         }
     }
 }
@@ -172,7 +199,10 @@ void HttpServer::start()
             continue;
         }
 
-        std::thread(&HttpServer::handle_request,this,client_socket).detach();//shiyongdulixiancheng;
+        thread_pool_.enqueue([this,client_socket]{
+            handle_request(client_socket);
+            std::cout << "thread id = " << std::this_thread::get_id() <<std::endl;
+        });
 
     }
     
